@@ -95,101 +95,26 @@ if [ -f "$MASTER" ] && [ -d "$ICON_SET" ]; then
 fi
 plutil -replace CFBundleDisplayName -string "Ultima V" "$DOSPAD/Resources/iDOS-Info.plist" 2>/dev/null || true
 
-# 3c. Strip the Thumbnail app-extension so a FREE Apple ID only has to sign ONE target.
-#     dospad bundles an "iDOSThumbnail" app-extension (it draws Files thumbnails). A paid
-#     account signs it fine, but a free "Personal Team" must provision *every* target
-#     separately — and doing that from the command line isn't supported, which is exactly
-#     what makes people think they need the $99 Developer Program. Removing the extension
-#     from the app's build graph (its embed phase + target dependencies; the extension
-#     target itself is just left orphaned/unbuilt) lets the app build & sign on its own.
-#     Set U5DOS_KEEP_THUMBNAIL=1 to keep it (e.g. you have a paid account and want the
-#     Files thumbnails). This only edits references, and aborts untouched if anything
-#     unexpected is found, so it's safe.
-if [ -z "${U5DOS_KEEP_THUMBNAIL:-}" ]; then
-  echo "Stripping the Thumbnail app-extension (so a free Apple ID signs just one target) ..."
-  python3 - "$PROJ" <<'PY'
-import re, sys
-p = sys.argv[1]; s = open(p).read()
-
-def sec(name):
-    m = re.search(r'/\* Begin %s section \*/(.*?)/\* End %s section \*/' % (name, name), s, re.S)
-    return m.group(1) if m else ""
-
-OBJ = r'\n\t\t([0-9A-F]{24}) /\* (.*?) \*/ = \{(.*?)\n\t\t\};'   # one object, boundary-respecting
-
-ext_targets = {m.group(1) for m in re.finditer(OBJ, sec("PBXNativeTarget"), re.S)
-               if 'product-type.app-extension' in m.group(3)}
-if not ext_targets:
-    print("  no app-extension target present — nothing to strip"); sys.exit(0)
-ext_dep_ids = {m.group(1) for m in re.finditer(OBJ, sec("PBXTargetDependency"), re.S)
-               if any(t in m.group(3) for t in ext_targets)}
-embed_ids = {m.group(1) for m in re.finditer(OBJ, sec("PBXCopyFilesBuildPhase"), re.S)
-             if 'dstSubfolderSpec = 13' in m.group(3) and '.appex' in m.group(3)}
-kill = ext_dep_ids | embed_ids
-
-nm = re.search(r'/\* Begin PBXNativeTarget section \*/(.*?)/\* End PBXNativeTarget section \*/', s, re.S)
-found = [0]; removed = [0]
-def fix(mo):
-    obj = mo.group(0)
-    if 'product-type.application"' not in obj:      # only the main app target
-        return obj
-    found[0] += 1; out = []
-    for line in obj.split("\n"):
-        rid = re.search(r'([0-9A-F]{24})', line)
-        if rid and rid.group(1) in kill and ('/* PBXTargetDependency */' in line
-                                              or 'Embed App Extensions */,' in line):
-            removed[0] += 1; continue            # drop this reference line only
-        out.append(line)
-    return "\n".join(out)
-new = re.sub(OBJ, fix, nm.group(1), flags=re.S)
-if found[0] != 1:
-    sys.stderr.write("  WARN: expected 1 application target, found %d — leaving project untouched\n" % found[0]); sys.exit(0)
-s = s[:nm.start(1)] + new + s[nm.end(1):]
-if s.count('{') != s.count('}'):
-    sys.stderr.write("  WARN: brace mismatch after edit — leaving project untouched\n"); sys.exit(0)
-open(p, "w").write(s)
-print("  removed %d extension reference(s) from the app target" % removed[0] if removed[0]
-      else "  Thumbnail extension already stripped")
-PY
-fi
-
-# 3d. Enable sound. dospad's default config leaves the sound blaster off and doesn't
-#     pin the mixer rate, so Ultima V comes up silent. Write a config with the PC
-#     speaker + Sound Blaster Pro on at 44.1 kHz (machine=svga_s3 — NOT tandy, which
-#     crashes the iOS renderer). Keeps dospad's gamepad key bindings.
+# 3c. Enable sound. dospad's stock config comes up silent for U5's music; turn on the
+#     mixer (44.1 kHz), Sound Blaster Pro + OPL, and the PC speaker so the intro music
+#     and in-game effects play. machine stays svga_s3 (NOT tandy — tandy silences audio
+#     in dospad's iOS build). Edits dospad's bundled config in place, preserving its
+#     [gamepad.keybinding] section (the on-screen controls). dospad copies this config
+#     into the app's Documents on first launch, so a fresh install has sound automatically.
 CFGSRC="$DOSPAD/Resources/configs/dospad.cfg"
 if [ -f "$CFGSRC" ]; then
   echo "Enabling sound in the DOSBox config ..."
-  cat > "$CFGSRC" <<'CFGEOF'
-[dosbox]
-machine=svga_s3
-memsize=16
-[mixer]
-nosound=false
-rate=44100
-[sblaster]
-sbtype=sbpro1
-oplmode=auto
-[cpu]
-core=simple
-cycles=5000
-[midi]
-mididevice=coremidi
-[speaker]
-pcspeaker=true
-[render]
-scaler=none
-[joystick]
-joysticktype=2axis
-[gamepad.keybinding]
-button0=CTRL,CTRL
-button1=ALT,ALT
-button2=SPC,SPACE
-button3=ENTR,ENTER
-button4=ESC,ESC
-button5=F1,F1
-[autoexec]
-CFGEOF
+  python3 - "$CFGSRC" <<'PY'
+import sys, re
+p = sys.argv[1]; s = open(p).read()
+s = re.sub(r'\[dosbox\]\n', '[dosbox]\nmachine=svga_s3\nmemsize=16\n', s, count=1)
+if '[mixer]' not in s:
+    s = s.replace('[sblaster]', '[mixer]\nnosound=false\nrate=44100\n[sblaster]', 1)
+s = re.sub(r'\[sblaster\]\n', '[sblaster]\nsbtype=sbpro1\noplmode=auto\n', s, count=1)
+s = re.sub(r'\[speaker\]\n', '[speaker]\npcspeaker=true\n', s, count=1)
+open(p, 'w').write(s)
+print("  sound enabled (svga_s3, SB Pro + OPL, PC speaker, mixer 44.1 kHz)")
+PY
 fi
 
 # 4. Build + sign.
@@ -227,13 +152,6 @@ xcrun devicectl device copy to --device "$DEVICE_ID" --user mobile \
   --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
   --source "$STAGE" --destination "Documents" || \
   echo "  (Data copy reported an issue — if the app boots to C:\\ , re-run this step.)"
-
-# 7b. Also push the sound-enabled config directly (dospad only copies its bundled
-#     config on FIRST launch, so an existing install would otherwise keep the old one).
-mkdir -p "$STAGE/config"; cp "$CFGSRC" "$STAGE/config/dospad.cfg" 2>/dev/null || true
-xcrun devicectl device copy to --device "$DEVICE_ID" --user mobile \
-  --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
-  --source "$STAGE/config/dospad.cfg" --destination "Documents/config/dospad.cfg" 2>/dev/null || true
 
 # 8. Launch — boots straight into Ultima V.
 xcrun devicectl device process launch --terminate-existing --device "$DEVICE_ID" "$BUNDLE_ID" || true
