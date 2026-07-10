@@ -13,7 +13,7 @@ GPLv2), cloned and patched at build time, plus **your own** copy of Ultima V.
 ## 📸 Screenshots
 
 The real Ultima V running in DOSBox on an iPhone — exploring Britannia and doing battle,
-with the on-screen keyboard for commands:
+with the on-screen D-pad and command buttons:
 
 <p align="center">
   <img src="screenshots/overworld.png" width="300" alt="Exploring Britannia" />
@@ -22,7 +22,7 @@ with the on-screen keyboard for commands:
 </p>
 
 <p align="center">
-  <img src="screenshots/combat-detail.png" width="480" alt="Battling a python" />
+  <img src="screenshots/combat-detail.png" width="480" alt="In combat with giant rats" />
 </p>
 
 ## 🚀 Install
