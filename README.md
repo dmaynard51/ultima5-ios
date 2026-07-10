@@ -27,7 +27,8 @@ with the on-screen keyboard for commands:
 
 ## 🚀 Install
 
-Requires a **Mac** with **Xcode** and **git**.
+Requires a **Mac** with **Xcode** and **git**. **No paid Apple Developer account ($99/yr)
+is needed** — see [💸 No paid Apple account needed](#-no-paid-apple-account-needed) below.
 
 **On your iPhone/iPad** (needs a free Apple ID; pass your 10-char Team ID):
 
@@ -51,6 +52,37 @@ dosbox/build-ios-dosbox.sh ABCDE12345 "/path/to/your/ultimaV/game"
 ```
 
 (Find your Team ID: `security find-identity -v -p codesigning` — the code in parentheses.)
+
+## 💸 No paid Apple account needed
+
+**You do _not_ need the $99/year Apple Developer Program.** Installing an app you built
+onto **your own** device is free with any Apple ID — this is Apple's "free provisioning."
+If Xcode ever pushes you toward a paid membership to *"register a device,"* that's the
+**command-line** signing path failing on a free account, **not** a real requirement: a
+free Apple ID can't mint provisioning profiles from the terminal, only through the Xcode
+app. Do the signing once in the **Xcode GUI** and it's completely free:
+
+1. Run the build script once — it still clones + patches DOSBox even if signing fails
+   (or just `git clone https://github.com/litchie/dospad.git`).
+2. Open the project in Xcode:
+   `~/Library/Caches/u5-dosbox/dospad/dospad.xcodeproj`
+3. **Xcode ▸ Settings ▸ Accounts** → add your **free Apple ID**.
+4. In **Signing & Capabilities**, for **both** targets — **iDOS** *and* **Thumbnail** —
+   set **Team** to your *Personal Team* and give each a **unique Bundle Identifier**
+   (e.g. `com.yourname.u5dos` and `com.yourname.u5dos.thumbnail`).
+5. Plug in your iPhone/iPad (unlocked, **Developer Mode on**) and press **Run ▶**. Xcode
+   registers the device **for free** and installs the app.
+6. On the device, trust the certificate under **Settings ▸ General ▸ VPN & Device
+   Management**, then reopen — it boots straight into Ultima V.
+
+> ⚠️ **The one real catch with a free Apple ID:** the app's signature **expires after 7
+> days** — just press **Run ▶** again to re-install and renew it. (A paid account lasts a
+> year; that's the only difference that matters here.) Free accounts are also capped at 3
+> sideloaded apps at a time.
+
+**Don't want to re-sign weekly?** Sideload with **[AltStore](https://altstore.io)** or
+**[SideStore](https://sidestore.io)** — they sign with your free Apple ID and
+auto-refresh the 7-day certificate in the background, no Mac needed after setup.
 
 ## 🎮 Playing
 
