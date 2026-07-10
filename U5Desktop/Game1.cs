@@ -8,6 +8,8 @@ using Microsoft.Xna.Framework.Input.Touch;
 using Ultima5Redux;
 using Ultima5Redux.Maps;
 using Ultima5Redux.MapUnits.TurnResults;
+using Ultima5Redux.MapUnits.TurnResults.SpecificTurnResults;
+using Ultima5Redux.References;
 using Ultima5Redux.References.Maps;
 
 namespace U5Desktop;
@@ -50,6 +52,8 @@ public class Game1 : Game
     private Rectangle _kbToggle;
     private readonly System.Collections.Generic.List<(Rectangle r, char c, string label)> _keys = new();
     private char _pendingCmd;                              // directional command awaiting a direction
+    private bool _onLargeMap = true;                       // false while inside a town/castle/dungeon
+    private Point2D _returnLargePos;                       // overworld tile to drop back onto when exiting
 
     // Standard EGA 16-colour palette.
     private static readonly Color[] Ega =
@@ -248,7 +252,7 @@ public class Game1 : Game
         // Fresh game (embedded INIT.GAM) on the Britannia overworld.
         _world = new World(true, dataDir, dataDir, true, true);
         _world.State.TheVirtualMap.LoadLargeMap(LargeMapLocationReferences.LargeMapType.Overworld);
-        _map = _world.State.TheVirtualMap.CurrentMap;
+        RefreshMap();
 
         // Runtime proof (visible even when running headless).
         Console.WriteLine($"U5PROTO: decoded {_tiles.Length} tiles from TILES.16");
@@ -352,10 +356,15 @@ public class Game1 : Game
     private void Move(Point2D.Direction dir)
     {
         Point2D before = _map.CurrentPosition.XY;
-        try { _world.TryToMoveNonCombatMap(dir, false, false, new TurnResults()); }
-        catch { /* ignore movement edge cases in the prototype */ }
+        bool wasLarge = _onLargeMap;
+        if (wasLarge) _returnLargePos = new Point2D(before.X, before.Y); // where to return on exit
+        var tr = new TurnResults();
+        try { _world.TryToMoveNonCombatMap(dir, false, false, tr); }
+        catch { /* ignore movement edge cases */ }
+        HandleResults(tr);                       // may exit a building; refreshes _map
+        if (_onLargeMap) TryMoongate();          // may teleport
         Point2D after = _map.CurrentPosition.XY;
-        bool blocked = before.X == after.X && before.Y == after.Y;
+        bool blocked = wasLarge == _onLargeMap && before.X == after.X && before.Y == after.Y;
         Log(">" + DirName(dir) + (blocked ? " - Blocked!" : ""));
         if (blocked) _bonk?.Play();
         else _step?.Play();
@@ -385,11 +394,70 @@ public class Game1 : Game
         while (_log.Count > 40) _log.RemoveAt(0);
     }
 
-    private void Drain(TurnResults tr)
+    // Keep our map reference in sync with the engine (it swaps CurrentMap on load).
+    private void RefreshMap()
+    {
+        _map = _world.State.TheVirtualMap.CurrentMap;
+        _onLargeMap = _map is LargeMap;
+    }
+
+    // The engine is headless: actions push "turn results" that the front-end must
+    // act on — printing messages, but also loading maps on enter/exit/teleport.
+    private void HandleResults(TurnResults tr)
     {
         while (tr.HasTurnResult)
-            if (tr.PopTurnResult() is Ultima5Redux.MapUnits.TurnResults.IOutputString os)
-                Log(os.OutputString);
+        {
+            var r = tr.PopTurnResult();
+            if (r is TeleportNewLocation tp) DoTeleport(tp);
+            else if (r is IOutputString os) Log(os.OutputString);
+            else if (r.TheTurnResultType == TurnResult.TurnResultType.OfferToExitScreen) ExitBuilding();
+        }
+        RefreshMap();
+    }
+
+    private void DoTeleport(TeleportNewLocation tp)
+    {
+        try
+        {
+            if (tp.TheTeleportType == TeleportNewLocation.TeleportType.EnterSmallMap)
+            {
+                var single = GameReferences.Instance.SmallMapRef.GetSingleMapByLocation(tp.TheLocation, tp.TeleportFloor);
+                _world.State.TheVirtualMap.LoadSmallMap(single, tp.TeleportPosition);
+                Log("Enter " + GameReferences.Instance.SmallMapRef.GetLocationName(tp.TheLocation));
+            }
+        }
+        catch { Log("Can't go there."); }
+    }
+
+    // Walking off the edge of a town/castle drops you back on the overworld tile
+    // you entered from.
+    private void ExitBuilding()
+    {
+        try
+        {
+            _world.State.TheVirtualMap.LoadLargeMap(
+                LargeMapLocationReferences.LargeMapType.Overworld, _returnLargePos);
+            Log("Leaving.");
+        }
+        catch { }
+    }
+
+    // Stepping onto an active moongate at night teleports across Britannia (or to
+    // the Underworld). Gated by the engine (night + buried moonstone), so this is a
+    // no-op most of the time — and never throws.
+    private void TryMoongate()
+    {
+        try
+        {
+            if (!_world.IsAvatarOnActiveMoongate()) return;
+            var p3 = _world.GetMoongateTeleportLocation();
+            var type = p3.Z == 0 ? LargeMapLocationReferences.LargeMapType.Overworld
+                                 : LargeMapLocationReferences.LargeMapType.Underworld;
+            _world.State.TheVirtualMap.LoadLargeMap(type, new Point2D(p3.X, p3.Y));
+            RefreshMap();
+            Log("* Moongate! *");
+        }
+        catch { }
     }
 
     // Immediate (non-directional) commands + starting directional ones.
@@ -406,7 +474,7 @@ public class Game1 : Game
         {
             case ' ': // Pass — wait a turn (the authentic U5 SPACE command)
                 _pendingCmd = '\0';
-                _world.TryToPassTime(tr); Drain(tr);
+                _world.TryToPassTime(tr); HandleResults(tr);
                 Log(">Pass");
                 break;
             case 'Z': // ztats
@@ -415,8 +483,10 @@ public class Game1 : Game
                 foreach (var r in recs) Log($"{r.Name}  HP {r.Stats.CurrentHp}/{r.Stats.MaximumHp}  Lv{r.Stats.Level}");
                 break;
             case 'E': // enter town/castle at current tile
-                _world.TryToEnterBuilding(_map.CurrentPosition.XY, out _, tr); Drain(tr);
-                _map = _world.State.TheVirtualMap.CurrentMap;
+                if (_onLargeMap)
+                    _returnLargePos = new Point2D(_map.CurrentPosition.X, _map.CurrentPosition.Y);
+                _world.TryToEnterBuilding(_map.CurrentPosition.XY, out _, tr);
+                HandleResults(tr);
                 break;
             case 'L': _pendingCmd = 'L'; Log("Look-"); break;
             case 'O': _pendingCmd = 'O'; Log("Open-"); break;
@@ -444,7 +514,7 @@ public class Game1 : Game
                 case 'S': _world.TryToSearch(xy, out _, tr); break;
                 case 'G': _world.TryToGetAThing(xy, out _, out _, tr, dir); break;
             }
-            Drain(tr);
+            HandleResults(tr);
         }
         catch { Log("Nothing there."); }
     }
@@ -484,36 +554,47 @@ public class Game1 : Game
         if (_map != null)
         {
             _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-            Point2D pos = _map.CurrentPosition.XY;
-            int nx = _map.NumOfXTiles, ny = _map.NumOfYTiles;
-            int halfX = _viewX / 2, halfY = _viewY / 2;
+            // A bad game state (mid-transition, unexpected tile) must never crash the
+            // app — draw what we can and swallow the rest for this frame.
+            try
+            {
+                int halfX = _viewX / 2, halfY = _viewY / 2;
+                Point2D pos = _map.CurrentPosition.XY;
+                int nx = _map.NumOfXTiles, ny = _map.NumOfYTiles;
 
-            for (int sy = 0; sy < _viewY; sy++)
-                for (int sx = 0; sx < _viewX; sx++)
-                {
-                    int mx = ((pos.X - halfX + sx) % nx + nx) % nx;
-                    int my = ((pos.Y - halfY + sy) % ny + ny) % ny;
-                    var tr = _map.GetTileReference(new Point2D(mx, my));
-                    var rect = new Rectangle(_mapX + sx * TILE * _scale, _mapY + sy * TILE * _scale,
-                                             TILE * _scale, TILE * _scale);
-                    // For overlay tiles (forest/castle/village/etc.) draw their ground
-                    // tile first so the transparent (index-0) pixels show terrain, not black.
-                    int ground = tr.FlatTileSubstitutionIndex >= 0 ? tr.FlatTileSubstitutionIndex
-                                 : (tr.IsUpright ? 5 /*Grass*/ : -1);
-                    if (ground >= 0 && ground < _tiles.Length)
-                        _spriteBatch.Draw(_tiles[ground], rect, Color.White);
-                    if (tr.Index >= 0 && tr.Index < _tiles.Length)
-                        _spriteBatch.Draw(_tiles[tr.Index], rect, Color.White);
-                }
+                for (int sy = 0; sy < _viewY; sy++)
+                    for (int sx = 0; sx < _viewX; sx++)
+                    {
+                        int rx = pos.X - halfX + sx, ry = pos.Y - halfY + sy;
+                        // Large maps wrap around the globe; small maps (towns/dungeons)
+                        // don't — anything off their edge is void (stays black).
+                        int mx, my;
+                        if (_onLargeMap) { mx = ((rx % nx) + nx) % nx; my = ((ry % ny) + ny) % ny; }
+                        else { if (rx < 0 || rx >= nx || ry < 0 || ry >= ny) continue; mx = rx; my = ry; }
 
-            if (AVATAR_TILE < _tiles.Length)
-                _spriteBatch.Draw(_tiles[AVATAR_TILE],
-                    new Rectangle(_mapX + halfX * TILE * _scale, _mapY + halfY * TILE * _scale,
-                                  TILE * _scale, TILE * _scale),
-                    Color.White);
+                        var tr = _map.GetTileReference(new Point2D(mx, my));
+                        var rect = new Rectangle(_mapX + sx * TILE * _scale, _mapY + sy * TILE * _scale,
+                                                 TILE * _scale, TILE * _scale);
+                        // Overlay tiles (forest/castle/village/etc.) draw their ground
+                        // tile first so transparent (index-0) pixels show terrain.
+                        int ground = tr.FlatTileSubstitutionIndex >= 0 ? tr.FlatTileSubstitutionIndex
+                                     : (tr.IsUpright ? 5 /*Grass*/ : -1);
+                        if (ground >= 0 && ground < _tiles.Length)
+                            _spriteBatch.Draw(_tiles[ground], rect, Color.White);
+                        if (tr.Index >= 0 && tr.Index < _tiles.Length)
+                            _spriteBatch.Draw(_tiles[tr.Index], rect, Color.White);
+                    }
 
-            DrawMapBorder();
-            DrawPanel();
+                if (AVATAR_TILE < _tiles.Length)
+                    _spriteBatch.Draw(_tiles[AVATAR_TILE],
+                        new Rectangle(_mapX + halfX * TILE * _scale, _mapY + halfY * TILE * _scale,
+                                      TILE * _scale, TILE * _scale),
+                        Color.White);
+
+                DrawMapBorder();
+                DrawPanel();
+            }
+            catch { /* skip this frame's remaining draws rather than crash */ }
             _spriteBatch.End();
         }
         GraphicsDevice.SetRenderTarget(null);
