@@ -46,11 +46,20 @@ if ! command -v dotnet >/dev/null 2>&1 || [ ! -x "$DOTNET_ROOT/dotnet" ]; then
   curl -sSL https://dot.net/v1/dotnet-install.sh | bash -s -- --channel 8.0 --install-dir "$DOTNET_ROOT"
 fi
 if ! dotnet workload list 2>/dev/null | grep -qi '^ios'; then
-  echo "The .NET iOS workload isn't installed. Installing it..."
-  echo "  (If this pulls an iOS 18 build that Xcode 15.4 rejects, install the iOS 17"
-  echo "   manifest: dotnet workload update --from-rollback-file with"
-  echo '   {"microsoft.net.sdk.ios":"17.0.8478/8.0.100"} — see the README.)'
+  echo "Installing the .NET iOS workload..."
   dotnet workload install ios || true
+fi
+# Match the workload to the installed Xcode. Xcode 15.x ships the iOS 17.x SDK and
+# needs the iOS 17 workload; the current default workload targets iOS 18 / Xcode 16
+# and fails to build against Xcode 15.4. Pin it when we detect Xcode 15.
+XCODE_VER="$(xcodebuild -version 2>/dev/null | awk '/^Xcode/{print $2}')"
+if [[ "$XCODE_VER" == 15.* ]] && ! dotnet workload list 2>/dev/null | grep -qi '17\.0\.8478'; then
+  echo "Xcode $XCODE_VER detected -> pinning the .NET iOS 17 workload (17.0.8478)."
+  RB="$(mktemp -t ios17rollback).json"
+  printf '{"microsoft.net.sdk.ios":"17.0.8478/8.0.100"}' > "$RB"
+  dotnet workload update --from-rollback-file "$RB" || \
+    echo "  (Could not auto-pin; if the build fails, see the README toolchain notes.)"
+  rm -f "$RB"
 fi
 
 # 1. The MIT logic library (cloned + pinned; drop in the net8 project file).
