@@ -10,6 +10,21 @@ GPLv2), cloned and patched at build time, plus **your own** copy of Ultima V.
 > the build copies your own copy onto the device. The DOSBox app is cloned + patched at
 > build time, not re-hosted here.
 
+## 📸 Screenshots
+
+The real Ultima V running in DOSBox on an iPhone — exploring Britannia and doing battle,
+with the on-screen keyboard for commands:
+
+<p align="center">
+  <img src="screenshots/overworld.png" width="300" alt="Exploring Britannia" />
+  &nbsp;&nbsp;
+  <img src="screenshots/combat.png" width="300" alt="Combat" />
+</p>
+
+<p align="center">
+  <img src="screenshots/combat-detail.png" width="480" alt="Battling a python" />
+</p>
+
 ## 🚀 Install
 
 Requires a **Mac** with **Xcode** and **git**.
