@@ -103,9 +103,12 @@ dotnet build -c Release -r ios-arm64 \
 APP="$(find "$WORK/U5iOS/bin/Release" -name 'U5iOS.app' -type d | head -1)"
 echo; echo "Signed app: $APP"
 
-# 5. Install + launch on the first available device.
+# 5. Install + launch on the first truly-available device. (Match "available" but
+# NOT "unavailable", and pull the UUID identifier by regex — the device Name can
+# contain spaces, so positional columns are unreliable.)
 DEVICE_ID="$(xcrun devicectl list devices 2>/dev/null \
-  | awk '/available/ && /iPhone|iPad/ {print $3; exit}')"
+  | grep -iE 'iPhone|iPad' | grep -i 'available' | grep -vi 'unavailable' \
+  | grep -oiE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)"
 if [ -n "${DEVICE_ID:-}" ]; then
   echo "Installing to $DEVICE_ID ..."
   xcrun devicectl device install app --device "$DEVICE_ID" "$APP"
