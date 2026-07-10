@@ -58,8 +58,11 @@ public class Game1 : Game
     private char _pendingCmd;                              // directional command awaiting a direction
     private bool _onLargeMap = true;                       // false while inside a town/castle/dungeon
     private Point2D _returnLargePos;                       // overworld tile to drop back onto when exiting
-    private bool _titleShown = true;                       // start on the title screen
-    private double _titleBlink;                            // pulse timer for "Tap to Begin"
+    private bool _titleShown = true;                       // start on the title/menu screen
+    private double _titleBlink;                            // pulse timer for the prompt
+    private bool _musicOn = true;                          // settings: background music
+    private readonly System.Collections.Generic.List<(Rectangle r, string label)> _menuItems = new();
+    private bool _prevMousePressed;
 
     // NPC conversation state. The engine runs a conversation as an async task that
     // emits script items via a callback and blocks on our typed keyword responses.
@@ -68,6 +71,11 @@ public class Game1 : Game
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> _convoOut = new();
     private bool _inConversation;
     private string _convoInput = "";
+
+    private string _dataDir;                               // U5 game data location (for reloading on Continue)
+    private static string SaveDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "u5save");
+    private static bool HasSave => File.Exists(Path.Combine(SaveDir, "save.json"));
 
     // Standard EGA 16-colour palette.
     private static readonly Color[] Ega =
@@ -241,8 +249,9 @@ public class Game1 : Game
             _music.Play();
         }
         catch { /* audio is optional; never let it break the game */ }
-        string dataDir = Environment.GetEnvironmentVariable("U5_DATA")
-                         ?? Path.Combine(AppContext.BaseDirectory, "u5data");
+        _dataDir = Environment.GetEnvironmentVariable("U5_DATA")
+                   ?? Path.Combine(AppContext.BaseDirectory, "u5data");
+        string dataDir = _dataDir;
 
         // Decode TILES.16 (U6-style LZW) into one Texture2D per 16x16 tile.
         byte[] raw = U6Lzw.Decompress(File.ReadAllBytes(Path.Combine(dataDir, "TILES.16")));
@@ -300,15 +309,21 @@ public class Game1 : Game
     {
         var kb = Keyboard.GetState();
 
-        // Title screen: any tap / key / click begins the game.
+        // Title / main-menu screen: pick New Game, Continue, or a setting.
         if (_titleShown)
         {
             _titleBlink += gameTime.ElapsedGameTime.TotalSeconds;
-            bool go = kb.GetPressedKeyCount() > 0
-                      || Mouse.GetState().LeftButton == ButtonState.Pressed;
+            if (_menuItems.Count == 0) RecomputeMenu();
+            var pts = new System.Collections.Generic.List<Point>();
             foreach (var t in TouchPanel.GetState())
-                if (t.State == TouchLocationState.Pressed) go = true;
-            if (go && _titleBlink > 0.4) _titleShown = false; // small delay avoids an instant skip
+                if (t.State == TouchLocationState.Pressed) pts.Add(new Point((int)t.Position.X, (int)t.Position.Y));
+            var ms = Mouse.GetState();
+            if (ms.LeftButton == ButtonState.Pressed && !_prevMousePressed) pts.Add(new Point(ms.X, ms.Y));
+            _prevMousePressed = ms.LeftButton == ButtonState.Pressed;
+            if (_titleBlink > 0.3)
+                foreach (var pt in pts)
+                    foreach (var (r, label) in _menuItems)
+                        if (r.Contains(pt)) { MenuSelect(label); break; }
             _prevKb = kb;
             base.Update(gameTime);
             return;
@@ -465,6 +480,72 @@ public class Game1 : Game
         RefreshMap();
     }
 
+    // --- Main menu / settings ---
+    private void RecomputeMenu()
+    {
+        _menuItems.Clear();
+        int w = GraphicsDevice.Viewport.Width, h = GraphicsDevice.Viewport.Height;
+        int iw = System.Math.Min(w * 3 / 5, h * 3 / 2), ih = System.Math.Max(44, h / 9), gap = System.Math.Max(8, h / 50);
+        var labels = new System.Collections.Generic.List<string> { "New Game" };
+        if (HasSave) labels.Add("Continue");
+        labels.Add(_musicOn ? "Music: On" : "Music: Off");
+        int cx = w / 2, y = h * 50 / 100;
+        foreach (var lbl in labels)
+        {
+            _menuItems.Add((new Rectangle(cx - iw / 2, y, iw, ih), lbl));
+            y += ih + gap;
+        }
+    }
+
+    private void MenuSelect(string label)
+    {
+        if (label == "New Game") { NewGame(); _titleShown = false; }
+        else if (label == "Continue") { if (LoadSavedGame()) _titleShown = false; else Log("No save to load."); }
+        else if (label.StartsWith("Music")) { _musicOn = !_musicOn; ApplyMusic(); RecomputeMenu(); }
+    }
+
+    private void ApplyMusic()
+    {
+        try { if (_musicOn) _music?.Resume(); else _music?.Pause(); } catch { }
+    }
+
+    private void NewGame()
+    {
+        try
+        {
+            _world = new World(true, _dataDir, _dataDir, true, true);
+            _world.State.TheVirtualMap.LoadLargeMap(LargeMapLocationReferences.LargeMapType.Overworld);
+            RefreshMap();
+            _log.Clear();
+            Log("Welcome to Britannia!");
+            Log("Tap KEYS for commands.");
+        }
+        catch { }
+    }
+
+    // --- Save / load ---
+    private void DoSave()
+    {
+        try
+        {
+            Directory.CreateDirectory(SaveDir);
+            if (_world.State.SaveGame(out string err, SaveDir)) Log("Game saved.");
+            else Log("Save failed: " + err);
+        }
+        catch { Log("Save failed."); }
+    }
+
+    private bool LoadSavedGame()
+    {
+        try
+        {
+            _world = new World(false, SaveDir, _dataDir, true, false);
+            RefreshMap();
+            return true;
+        }
+        catch (Exception e) { Console.WriteLine("U5LOAD failed: " + e); return false; }
+    }
+
     // --- NPC conversation ---
     private void StartConversation(NonPlayerCharacter npc)
     {
@@ -607,6 +688,7 @@ public class Game1 : Game
             case 'S': _pendingCmd = 'S'; Log("Search-"); break;
             case 'G': _pendingCmd = 'G'; Log("Get-"); break;
             case 'T': _pendingCmd = 'T'; Log("Talk-"); break;
+            case 'Q': _pendingCmd = '\0'; DoSave(); break;   // Quit & Save (saves; keep playing)
             default: Log($"{c}: not yet."); break;
         }
         // Keep the keyboard open — the D-pad stays usable, and directional commands
@@ -776,13 +858,20 @@ public class Game1 : Game
 
         // titles
         int big = System.Math.Max(4, h / 52), sub = System.Math.Max(2, h / 150);
-        DrawCentered("ULTIMA V", h * 30 / 100, big, gold, w);
-        DrawCentered("Warriors of Destiny", h * 30 / 100 + Font.Glyph * big + h / 40, sub, Color.White, w);
+        DrawCentered("ULTIMA V", h * 18 / 100, big, gold, w);
+        DrawCentered("Warriors of Destiny", h * 18 / 100 + Font.Glyph * big + h / 40, sub, Color.White, w);
 
-        // pulsing prompt
-        double a = 0.45 + 0.55 * System.Math.Sin(_titleBlink * 3.0);
-        var pc = new Color((int)(255 * a), (int)(255 * a), (int)(170 * a));
-        DrawCentered("Tap to Begin", h * 74 / 100, sub, pc, w);
+        // menu buttons
+        if (_menuItems.Count == 0) RecomputeMenu();
+        int mfs = System.Math.Max(2, h / 150);
+        double a = 0.7 + 0.3 * System.Math.Sin(_titleBlink * 3.0);
+        foreach (var (r, label) in _menuItems)
+        {
+            _spriteBatch.Draw(_pixel, r, new Color(28, 32, 66));
+            Frame(r.X, r.Y, r.Width, r.Height, System.Math.Max(2, h / 320), gold);
+            var c = new Color((int)(255 * a), (int)(228 * a), (int)(150 * a));
+            DrawCentered(label, r.Y + r.Height / 2 - Font.Glyph * mfs / 2, mfs, c, w);
+        }
     }
 
     // Double-line frame around the map window, echoing the original's ornate border.
