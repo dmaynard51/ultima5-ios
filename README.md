@@ -27,7 +27,7 @@ with the on-screen D-pad and command buttons:
 
 ## 🚀 Install
 
-Requires a **Mac** with **Xcode** and **git**. **No paid Apple Developer account ($99/yr)
+Requires a **Mac** with **Xcode** and **git** (no Mac? see [💻 No Mac?](#-no-mac-sideload-the-prebuilt-app) below). **No paid Apple Developer account ($99/yr)
 is needed** — see [💸 No paid Apple account needed](#-no-paid-apple-account-needed) below.
 
 **On your iPhone/iPad** (needs just a free Apple ID — one command):
@@ -97,6 +97,20 @@ app. Do the signing once in the **Xcode GUI** and it's completely free:
 **Don't want to re-sign weekly?** Sideload with **[AltStore](https://altstore.io)** or
 **[SideStore](https://sidestore.io)** — they sign with your free Apple ID and
 auto-refresh the 7-day certificate in the background, no Mac needed after setup.
+
+## 💻 No Mac? (sideload the prebuilt app)
+
+No Mac or Xcode? Download the prebuilt **[Ultima V IPA](https://github.com/dmaynard51/ultima5-ios/releases/latest)** and sideload it from a
+**Windows or Linux PC** — no Mac needed:
+
+- **[Sideloadly](https://sideloadly.io)** or **[AltStore](https://altstore.io)** install the
+  `.ipa` with a **free Apple ID** (AltStore auto-refreshes the 7-day signature over Wi-Fi).
+- **No computer at all:** **TrollStore** installs it permanently *if* your iOS supports it;
+  in the EU, **AltStore PAL**.
+
+The IPA has **no game data**. After installing, open the **Files** app → **On My iPhone →
+Ultima V** and copy your own Ultima V DOS game files into that folder's root, then reopen the
+app — it boots straight into the game.
 
 ## 🎮 Playing
 
