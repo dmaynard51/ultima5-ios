@@ -1,0 +1,12 @@
+# --- Copyrighted Ultima V game data — NEVER commit ---
+# You must own Ultima V; the build copies your own copy onto the device.
+u5data/
+
+# --- Build output / clones live in ~/Library/Caches, not here ---
+**/bin/
+**/obj/
+*.old
+.DS_Store
+
+# leftover native-port dirs (cloned library) — not part of the DOSBox app
+u5redux/
