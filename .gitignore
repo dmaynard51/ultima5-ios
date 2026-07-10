@@ -1,17 +1,12 @@
 # --- Copyrighted Ultima V game data — NEVER commit ---
-# You must own Ultima V; the build scripts copy your own copy in here.
+# You must own Ultima V; the build copies your own copy onto the device.
 u5data/
 
-# --- The MIT logic library is cloned at build time (bradhannah/Ultima5Redux) ---
-# so it isn't re-hosted here. Delete this line if you'd rather vendor it.
-u5redux/
-
-# --- Build output ---
+# --- Build output / clones live in ~/Library/Caches, not here ---
 **/bin/
 **/obj/
-ios/build/
-
-# --- Misc ---
-*.csproj.old
-dims.txt
+*.old
 .DS_Store
+
+# leftover native-port dirs (cloned library) — not part of the DOSBox app
+u5redux/
