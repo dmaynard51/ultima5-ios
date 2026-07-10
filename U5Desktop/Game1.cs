@@ -47,7 +47,6 @@ public class Game1 : Game
     private Font _font;
     private readonly System.Collections.Generic.List<string> _log = new();
     private bool _kbShown;
-    private int _kbTop;
     private Rectangle _kbToggle;
     private readonly System.Collections.Generic.List<(Rectangle r, char c, string label)> _keys = new();
     private char _pendingCmd;                              // directional command awaiting a direction
