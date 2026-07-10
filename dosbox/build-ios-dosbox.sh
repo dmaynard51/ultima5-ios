@@ -153,6 +153,45 @@ print("  removed %d extension reference(s) from the app target" % removed[0] if 
 PY
 fi
 
+# 3d. Enable sound. dospad's default config leaves the sound blaster off and doesn't
+#     pin the mixer rate, so Ultima V comes up silent. Write a config with the PC
+#     speaker + Sound Blaster Pro on at 44.1 kHz (machine=svga_s3 — NOT tandy, which
+#     crashes the iOS renderer). Keeps dospad's gamepad key bindings.
+CFGSRC="$DOSPAD/Resources/configs/dospad.cfg"
+if [ -f "$CFGSRC" ]; then
+  echo "Enabling sound in the DOSBox config ..."
+  cat > "$CFGSRC" <<'CFGEOF'
+[dosbox]
+machine=svga_s3
+memsize=16
+[mixer]
+nosound=false
+rate=44100
+[sblaster]
+sbtype=sbpro1
+oplmode=auto
+[cpu]
+core=simple
+cycles=5000
+[midi]
+mididevice=coremidi
+[speaker]
+pcspeaker=true
+[render]
+scaler=none
+[joystick]
+joysticktype=2axis
+[gamepad.keybinding]
+button0=CTRL,CTRL
+button1=ALT,ALT
+button2=SPC,SPACE
+button3=ENTR,ENTER
+button4=ESC,ESC
+button5=F1,F1
+[autoexec]
+CFGEOF
+fi
+
 # 4. Build + sign.
 echo "Building (this takes a few minutes the first time) ..."
 xattr -cr "$DOSPAD" 2>/dev/null || true
@@ -188,6 +227,13 @@ xcrun devicectl device copy to --device "$DEVICE_ID" --user mobile \
   --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
   --source "$STAGE" --destination "Documents" || \
   echo "  (Data copy reported an issue — if the app boots to C:\\ , re-run this step.)"
+
+# 7b. Also push the sound-enabled config directly (dospad only copies its bundled
+#     config on FIRST launch, so an existing install would otherwise keep the old one).
+mkdir -p "$STAGE/config"; cp "$CFGSRC" "$STAGE/config/dospad.cfg" 2>/dev/null || true
+xcrun devicectl device copy to --device "$DEVICE_ID" --user mobile \
+  --domain-type appDataContainer --domain-identifier "$BUNDLE_ID" \
+  --source "$STAGE/config/dospad.cfg" --destination "Documents/config/dospad.cfg" 2>/dev/null || true
 
 # 8. Launch — boots straight into Ultima V.
 xcrun devicectl device process launch --terminate-existing --device "$DEVICE_ID" "$BUNDLE_ID" || true
