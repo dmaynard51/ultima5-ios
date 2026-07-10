@@ -67,9 +67,11 @@ app. Do the signing once in the **Xcode GUI** and it's completely free:
 2. Open the project in Xcode:
    `~/Library/Caches/u5-dosbox/dospad/dospad.xcodeproj`
 3. **Xcode ▸ Settings ▸ Accounts** → add your **free Apple ID**.
-4. In **Signing & Capabilities**, for **both** targets — **iDOS** *and* **Thumbnail** —
-   set **Team** to your *Personal Team* and give each a **unique Bundle Identifier**
-   (e.g. `com.yourname.u5dos` and `com.yourname.u5dos.thumbnail`).
+4. In **Signing & Capabilities** for the **iDOS** target, set **Team** to your *Personal
+   Team* and give it a **unique Bundle Identifier** (e.g. `com.yourname.u5dos`). *(The
+   build script removes dospad's Thumbnail app-extension by default, so there's only this
+   one target to sign — the usual free-account snag. Pass `U5DOS_KEEP_THUMBNAIL=1` to keep
+   it if you have a paid account.)*
 5. Plug in your iPhone/iPad (unlocked, **Developer Mode on**) and press **Run ▶**. Xcode
    registers the device **for free** and installs the app.
 6. On the device, trust the certificate under **Settings ▸ General ▸ VPN & Device
