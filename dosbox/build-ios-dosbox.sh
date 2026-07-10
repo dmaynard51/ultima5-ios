@@ -20,6 +20,7 @@
 # Find your Team ID: security find-identity -v -p codesigning (the code in parens).
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TEAM="${1:?Usage: build-ios-dosbox.sh <AppleTeamID> [ultimaV-data-dir]}"
 U5_SRC="${2:-/Applications/Ultima V™.app/Contents/Resources/game}"
 BUNDLE_ID="${U5DOS_BUNDLE_ID:-info.u5redux.u5dos}"
@@ -79,6 +80,20 @@ open(p, "w").write(s.replace(marker, inject, 1))
 print("patched")
 PY
 fi
+
+# 3b. Ultima V branding: swap the app icon (gold ankh) and rename to "Ultima V".
+MASTER="$SCRIPT_DIR/ultima5-icon.png"
+ICON_SET="$DOSPAD/Resources/Assets.xcassets/AppIcon.appiconset"
+if [ -f "$MASTER" ] && [ -d "$ICON_SET" ]; then
+  echo "Applying the Ultima V app icon ..."
+  for f in "$ICON_SET"/icon-*.png; do
+    n="$(basename "$f" .png | sed 's/icon-//')"          # pixel size from filename
+    [[ "$n" =~ ^[0-9]+$ ]] && sips -s format png -z "$n" "$n" "$MASTER" --out "$f" >/dev/null 2>&1 || true
+  done
+  [ -f "$ICON_SET/iTunesArtwork@2x.png" ] && \
+    sips -s format png -z 1024 1024 "$MASTER" --out "$ICON_SET/iTunesArtwork@2x.png" >/dev/null 2>&1 || true
+fi
+plutil -replace CFBundleDisplayName -string "Ultima V" "$DOSPAD/Resources/iDOS-Info.plist" 2>/dev/null || true
 
 # 4. Build + sign.
 echo "Building (this takes a few minutes the first time) ..."

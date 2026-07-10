@@ -22,8 +22,9 @@ SOFTWARE.
 
 ---
 
-This license covers the MonoGame front-end (U5Desktop/, U5iOS/) and the build
-scripts only. It does NOT cover:
-  - The Ultima5Redux logic library (MIT, (c) Brad Hannah), cloned separately.
+This license covers the app icon and the build script in this repository only.
+It does NOT cover:
+  - dospad (the iOS DOSBox), which is (c) Chaoji Li / litchie and licensed GPLv2;
+    it is cloned + patched at build time, not included here.
   - Any Ultima V game data, which is (c) Origin Systems / Electronic Arts and is
     not included in or distributed by this repository.
