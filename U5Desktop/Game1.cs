@@ -10,6 +10,7 @@ using Ultima5Redux;
 using Ultima5Redux.Dialogue;
 using Ultima5Redux.Maps;
 using Ultima5Redux.MapUnits;
+using Ultima5Redux.MapUnits.CombatMapUnits;
 using Ultima5Redux.MapUnits.NonPlayerCharacters;
 using Ultima5Redux.MapUnits.TurnResults;
 using Ultima5Redux.MapUnits.TurnResults.SpecificTurnResults;
@@ -57,6 +58,7 @@ public class Game1 : Game
     private readonly System.Collections.Generic.List<(Rectangle r, char c, string label)> _keys = new();
     private char _pendingCmd;                              // directional command awaiting a direction
     private bool _onLargeMap = true;                       // false while inside a town/castle/dungeon
+    private bool _inCombat;                                // true on a tactical combat map
     private Point2D _returnLargePos;                       // overworld tile to drop back onto when exiting
     private bool _titleShown = true;                       // start on the title/menu screen
     private double _titleBlink;                            // pulse timer for the prompt
@@ -392,10 +394,12 @@ public class Game1 : Game
         base.Update(gameTime);
     }
 
-    // A direction either completes a pending command, or walks the Avatar.
+    // A direction either completes a pending command, or moves (in combat it moves
+    // the active party member; otherwise it walks the Avatar).
     private void DirectionInput(Point2D.Direction dir)
     {
         if (_pendingCmd != '\0') { ExecuteDir(_pendingCmd, dir); _pendingCmd = '\0'; }
+        else if (_inCombat) CombatMove(dir);
         else Move(dir);
     }
 
@@ -463,6 +467,7 @@ public class Game1 : Game
     {
         _map = _world.State.TheVirtualMap.CurrentMap;
         _onLargeMap = _map is LargeMap;
+        _inCombat = _map is CombatMap;
     }
 
     // The engine is headless: actions push "turn results" that the front-end must
@@ -650,6 +655,83 @@ public class Game1 : Game
         catch { }
     }
 
+    // --- Combat ---
+    private static int DX(Point2D.Direction d) => d == Point2D.Direction.Left ? -1 : d == Point2D.Direction.Right ? 1 : 0;
+    private static int DY(Point2D.Direction d) => d == Point2D.Direction.Up ? -1 : d == Point2D.Direction.Down ? 1 : 0;
+
+    private static Ultima5Redux.References.Maps.SingleCombatMapReference.EntryDirection ToEntryDir(Point2D.Direction d)
+        => d switch
+        {
+            Point2D.Direction.Up => Ultima5Redux.References.Maps.SingleCombatMapReference.EntryDirection.North,
+            Point2D.Direction.Down => Ultima5Redux.References.Maps.SingleCombatMapReference.EntryDirection.South,
+            Point2D.Direction.Left => Ultima5Redux.References.Maps.SingleCombatMapReference.EntryDirection.West,
+            _ => Ultima5Redux.References.Maps.SingleCombatMapReference.EntryDirection.East
+        };
+
+    // Attack: on the world map it opens a combat map; in combat it strikes an
+    // adjacent enemy. Player actions auto-advance the turn, so we then run the
+    // enemies' turns until it's a living party member's turn again (or combat ends).
+    private void AttackDir(Point2D.Direction dir)
+    {
+        var tr = new TurnResults();
+        if (_inCombat)
+        {
+            if (_map is CombatMap cm && cm.CurrentCombatPlayer != null)
+            {
+                var pp = cm.CurrentCombatPlayer.MapUnitPosition;
+                var target = new Point2D(pp.X + DX(dir), pp.Y + DY(dir));
+                try { cm.ProcessCombatPlayerTurn(tr, CombatMap.SelectionAction.Attack, target, out _, out _); }
+                catch { }
+                HandleResults(tr);
+                PumpCombat();
+            }
+            return;
+        }
+        var cur = _map.CurrentPosition.XY;
+        var xy = new Point2D(cur.X + DX(dir), cur.Y + DY(dir));
+        try
+        {
+            _world.TryToAttackNonCombatMap(xy, out MapUnit mu, out var scmr, out _, tr);
+            if (scmr != null && mu is Enemy en)
+                _world.State.TheVirtualMap.LoadCombatMapWithCalculation(
+                    scmr, ToEntryDir(dir), _world.State.CharacterRecords, en.EnemyReference);
+            HandleResults(tr);
+            if (_inCombat) { Log("* Combat! *"); PumpCombat(); }
+        }
+        catch { HandleResults(tr); }
+    }
+
+    private void CombatMove(Point2D.Direction dir)
+    {
+        if (_map is not CombatMap cm || cm.CurrentCombatPlayer == null) return;
+        var tr = new TurnResults();
+        try { _world.TryToMoveCombatMap(dir, tr, false); } catch { }
+        HandleResults(tr);
+        PumpCombat();
+    }
+
+    // Run non-player (enemy) turns until a living party member must act, or combat ends.
+    private void PumpCombat()
+    {
+        if (_map is not CombatMap cm) return;
+        for (int guard = 0; guard < 60; guard++)
+        {
+            if (cm.NumberOfEnemies == 0 || cm.NumberOfAlivePlayers == 0) { EndCombat(cm.NumberOfEnemies == 0); return; }
+            if (cm.CurrentCombatPlayer != null) return;   // a party member's turn — wait for input
+            var tr = new TurnResults();
+            try { cm.ProcessEnemyTurn(tr, out _, out _, out _); } catch { }
+            HandleResults(tr);                            // ProcessEnemyTurn already advances the queue
+        }
+    }
+
+    private void EndCombat(bool won)
+    {
+        try { _world.State.TheVirtualMap.ReturnToPreviousMapAfterCombat(); }
+        catch { }
+        RefreshMap();
+        Log(won ? "* Victory! *" : "All have fallen...");
+    }
+
     // Immediate (non-directional) commands + starting directional ones.
     private void OnKey(char c)
     {
@@ -688,6 +770,7 @@ public class Game1 : Game
             case 'S': _pendingCmd = 'S'; Log("Search-"); break;
             case 'G': _pendingCmd = 'G'; Log("Get-"); break;
             case 'T': _pendingCmd = 'T'; Log("Talk-"); break;
+            case 'A': _pendingCmd = 'A'; Log("Attack-"); break;
             case 'Q': _pendingCmd = '\0'; DoSave(); break;   // Quit & Save (saves; keep playing)
             default: Log($"{c}: not yet."); break;
         }
@@ -698,8 +781,8 @@ public class Game1 : Game
 
     private void ExecuteDir(char cmd, Point2D.Direction dir)
     {
-        int dx = dir == Point2D.Direction.Left ? -1 : dir == Point2D.Direction.Right ? 1 : 0;
-        int dy = dir == Point2D.Direction.Up ? -1 : dir == Point2D.Direction.Down ? 1 : 0;
+        if (cmd == 'A') { AttackDir(dir); return; }
+        int dx = DX(dir), dy = DY(dir);
         var xy = new Point2D(_map.CurrentPosition.X + dx, _map.CurrentPosition.Y + dy);
         var tr = new TurnResults();
         try
@@ -757,7 +840,10 @@ public class Game1 : Game
             try
             {
                 int halfX = _viewX / 2, halfY = _viewY / 2;
-                Point2D pos = _map.CurrentPosition.XY;
+                // In combat, follow whoever's turn it is; otherwise the Avatar.
+                Point2D pos = _inCombat && _map is CombatMap ccm && ccm.CurrentCombatPlayer != null
+                    ? ccm.CurrentCombatPlayer.MapUnitPosition.XY
+                    : _map.CurrentPosition.XY;
                 int nx = _map.NumOfXTiles, ny = _map.NumOfYTiles;
 
                 for (int sy = 0; sy < _viewY; sy++)
@@ -786,7 +872,9 @@ public class Game1 : Game
                 // NPCs, monsters, and other map units — sprites drawn over the terrain
                 // (their transparent pixels let the ground show through).
                 int camX = pos.X - halfX, camY = pos.Y - halfY;
-                Avatar avatarUnit = _map.CurrentMapUnits.TheAvatar;
+                // Off the combat map we draw the Avatar centred separately, so skip
+                // it here. In combat every unit (party + enemies) is a real map unit.
+                Avatar avatarUnit = _inCombat ? null : _map.CurrentMapUnits.TheAvatar;
                 foreach (MapUnit u in _map.CurrentMapUnits.AllActiveMapUnits)
                 {
                     if (ReferenceEquals(u, avatarUnit)) continue;      // avatar drawn centred below
@@ -803,7 +891,7 @@ public class Game1 : Game
                                       TILE * _scale, TILE * _scale), Color.White);
                 }
 
-                if (AVATAR_TILE < _tiles.Length)
+                if (!_inCombat && AVATAR_TILE < _tiles.Length)
                     _spriteBatch.Draw(_tiles[AVATAR_TILE],
                         new Rectangle(_mapX + halfX * TILE * _scale, _mapY + halfY * TILE * _scale,
                                       TILE * _scale, TILE * _scale),
