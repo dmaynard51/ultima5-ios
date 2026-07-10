@@ -30,18 +30,27 @@ with the on-screen keyboard for commands:
 Requires a **Mac** with **Xcode** and **git**. **No paid Apple Developer account ($99/yr)
 is needed** — see [💸 No paid Apple account needed](#-no-paid-apple-account-needed) below.
 
-**On your iPhone/iPad** (needs a free Apple ID; pass your 10-char Team ID):
+**On your iPhone/iPad** (needs just a free Apple ID — one command):
 
 ```sh
 git clone https://github.com/dmaynard51/ultima5-ios.git
 cd ultima5-ios
-dosbox/build-ios-dosbox.sh ABCDE12345
+dosbox/build-ios-dosbox.sh
 ```
 
-That's it — it clones the iOS DOSBox, patches it to auto-run Ultima V, brands it with
-the ankh icon and the name "Ultima V", builds, signs, installs, and copies your game
-data onto the device. First run on the phone: **trust the app once** under **Settings ▸
-General ▸ VPN & Device Management**, then reopen — it boots straight into the game.
+That's it — it auto-detects your Apple Team ID, clones the iOS DOSBox, patches it to
+auto-run Ultima V, brands it with the ankh icon and the name "Ultima V", **strips the
+extra app-extension so a free Apple ID has just one target to sign**, builds, signs,
+installs, and copies your game data onto the device. It boots straight into the game with
+an on-screen D-pad + Ultima command keyboard and sound. First run on the phone: **trust
+the app once** under **Settings ▸ General ▸ VPN & Device Management**, then reopen.
+
+If auto-detect can't find your team, pass your 10-char Team ID as the first argument
+(`security find-identity -v -p codesigning` — the code in parentheses):
+
+```sh
+dosbox/build-ios-dosbox.sh ABCDE12345
+```
 
 By default it reads your U5 data from `/Applications/Ultima V™.app/Contents/Resources/game`
 (a Mac GOG install). If yours is elsewhere, pass the folder (the one with `ULTIMA.EXE`
@@ -51,7 +60,10 @@ By default it reads your U5 data from `/Applications/Ultima V™.app/Contents/Re
 dosbox/build-ios-dosbox.sh ABCDE12345 "/path/to/your/ultimaV/game"
 ```
 
-(Find your Team ID: `security find-identity -v -p codesigning` — the code in parentheses.)
+> **Hit a "$99 / register a device" wall in Xcode?** You don't need the paid program —
+> that's just the command-line signer failing on a free account. See
+> [💸 No paid Apple account needed](#-no-paid-apple-account-needed) below; the script now
+> prints the exact free Xcode steps if CLI signing fails.
 
 ## 💸 No paid Apple account needed
 
