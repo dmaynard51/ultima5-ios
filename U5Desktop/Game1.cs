@@ -7,8 +7,10 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Input.Touch;
 using Ultima5Redux;
+using Ultima5Redux.Dialogue;
 using Ultima5Redux.Maps;
 using Ultima5Redux.MapUnits;
+using Ultima5Redux.MapUnits.NonPlayerCharacters;
 using Ultima5Redux.MapUnits.TurnResults;
 using Ultima5Redux.MapUnits.TurnResults.SpecificTurnResults;
 using Ultima5Redux.References;
@@ -58,6 +60,14 @@ public class Game1 : Game
     private Point2D _returnLargePos;                       // overworld tile to drop back onto when exiting
     private bool _titleShown = true;                       // start on the title screen
     private double _titleBlink;                            // pulse timer for "Tap to Begin"
+
+    // NPC conversation state. The engine runs a conversation as an async task that
+    // emits script items via a callback and blocks on our typed keyword responses.
+    private Conversation _convo;
+    private System.Threading.Tasks.Task _convoTask;
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> _convoOut = new();
+    private bool _inConversation;
+    private string _convoInput = "";
 
     // Standard EGA 16-colour palette.
     private static readonly Color[] Ega =
@@ -307,6 +317,14 @@ public class Game1 : Game
         if (kb.IsKeyDown(Keys.Escape)) Exit();
 #endif
 
+        // Pump NPC conversation output (produced on the conversation's task thread).
+        while (_convoOut.TryDequeue(out var line)) Log(line);
+        if (_inConversation && _convoTask != null && _convoTask.IsCompleted)
+        {
+            _inConversation = false; _convoInput = "";
+            Log("Bye.");
+        }
+
         // Keyboard: one step per key-down edge.
         Point2D.Direction tapped = Point2D.Direction.None;
         if (Pressed(kb, Keys.Up) || Pressed(kb, Keys.W)) tapped = Point2D.Direction.Up;
@@ -375,6 +393,15 @@ public class Game1 : Game
         _ => "?"
     };
 
+    private static MapUnitMovement.MovementCommandDirection ToMoveDir(Point2D.Direction dir) => dir switch
+    {
+        Point2D.Direction.Up => MapUnitMovement.MovementCommandDirection.North,
+        Point2D.Direction.Down => MapUnitMovement.MovementCommandDirection.South,
+        Point2D.Direction.Left => MapUnitMovement.MovementCommandDirection.West,
+        Point2D.Direction.Right => MapUnitMovement.MovementCommandDirection.East,
+        _ => MapUnitMovement.MovementCommandDirection.None
+    };
+
     private void Move(Point2D.Direction dir)
     {
         Point2D before = _map.CurrentPosition.XY;
@@ -431,10 +458,70 @@ public class Game1 : Game
         {
             var r = tr.PopTurnResult();
             if (r is TeleportNewLocation tp) DoTeleport(tp);
+            else if (r is NpcTalkInteraction talk) StartConversation(talk.Npc);
             else if (r is IOutputString os) Log(os.OutputString);
             else if (r.TheTurnResultType == TurnResult.TurnResultType.OfferToExitScreen) ExitBuilding();
         }
         RefreshMap();
+    }
+
+    // --- NPC conversation ---
+    private void StartConversation(NonPlayerCharacter npc)
+    {
+        try
+        {
+            _convo = _world.CreateConversationAndBegin(npc.NpcState, OnConvoItem);
+            _inConversation = true;
+            _convoInput = "";
+            if (!_kbShown) { _kbShown = true; RecomputeView(); } // raise the keyboard to type keywords
+            Log("You meet " + npc.FriendlyName + ".");
+            _convoTask = _convo.BeginConversation();              // runs async; emits via OnConvoItem
+        }
+        catch { Log("They do not respond."); _inConversation = false; }
+    }
+
+    // Called (on the conversation's task thread) each time the NPC emits a script
+    // item — turn it into text and queue it for the game thread to log.
+    private void OnConvoItem(Conversation c)
+    {
+        try
+        {
+            var item = c.DequeueFromOutputBuffer();
+            if (item == null) return;
+            string text = item.Command switch
+            {
+                Ultima5Redux.References.Dialogue.TalkScript.TalkCommand.PlainString => item.StringData,
+                Ultima5Redux.References.Dialogue.TalkScript.TalkCommand.AvatarsName => "Avatar",
+                Ultima5Redux.References.Dialogue.TalkScript.TalkCommand.NewLine => "\n",
+                _ => ""     // control commands (Pause/KeyWait/etc.) render nothing
+            };
+            if (!string.IsNullOrEmpty(text)) _convoOut.Enqueue(text);
+        }
+        catch { /* ignore a malformed item */ }
+    }
+
+    // A typed key while a conversation is active builds/sends a keyword.
+    private void ConvoKey(char c)
+    {
+        if (c == (char)27) { EndConversation(); return; }        // ESC = leave
+        if (c == '\r')                                            // ENTER = send the keyword
+        {
+            string kw = _convoInput.Trim();
+            Log("> " + (kw.Length == 0 ? "(pause)" : kw));
+            try { _convo?.AddUserResponse(kw); } catch { }
+            _convoInput = "";
+            return;
+        }
+        if (c == '\b') { if (_convoInput.Length > 0) _convoInput = _convoInput.Substring(0, _convoInput.Length - 1); return; }
+        if (c >= ' ' && c < (char)127 && _convoInput.Length < 16) _convoInput += char.ToLowerInvariant(c);
+    }
+
+    private void EndConversation()
+    {
+        try { _convo?.AddUserResponse("bye"); } catch { }
+        _inConversation = false;
+        _convoInput = "";
+        Log("Bye.");
     }
 
     private void DoTeleport(TeleportNewLocation tp)
@@ -485,6 +572,7 @@ public class Game1 : Game
     // Immediate (non-directional) commands + starting directional ones.
     private void OnKey(char c)
     {
+        if (_inConversation) { ConvoKey(c); return; }    // typing keywords, not commands
         if (c == (char)27) // ESC: cancel a pending command first, otherwise close the keyboard
         {
             if (_pendingCmd != '\0') { _pendingCmd = '\0'; Log("Cancelled."); return; }
@@ -510,10 +598,15 @@ public class Game1 : Game
                 _world.TryToEnterBuilding(_map.CurrentPosition.XY, out _, tr);
                 HandleResults(tr);
                 break;
+            case 'K': // Klimb ladders / grates (up or down from the current tile)
+                _pendingCmd = '\0';
+                _world.TryToKlimb(out _, tr); HandleResults(tr);
+                break;
             case 'L': _pendingCmd = 'L'; Log("Look-"); break;
             case 'O': _pendingCmd = 'O'; Log("Open-"); break;
             case 'S': _pendingCmd = 'S'; Log("Search-"); break;
             case 'G': _pendingCmd = 'G'; Log("Get-"); break;
+            case 'T': _pendingCmd = 'T'; Log("Talk-"); break;
             default: Log($"{c}: not yet."); break;
         }
         // Keep the keyboard open — the D-pad stays usable, and directional commands
@@ -535,6 +628,7 @@ public class Game1 : Game
                 case 'O': _world.TryToOpenAThing(xy, out _, tr); break;
                 case 'S': _world.TryToSearch(xy, out _, tr); break;
                 case 'G': _world.TryToGetAThing(xy, out _, out _, tr, dir); break;
+                case 'T': _world.TryToTalk(ToMoveDir(dir), tr); break;
             }
             HandleResults(tr);
         }
@@ -778,6 +872,7 @@ public class Game1 : Game
         int cpl = System.Math.Max(4, (ow - 2 * inpad) / glyph);      // chars per line
         var wrapped = new System.Collections.Generic.List<string>();
         foreach (var line in _log) WrapInto(line, cpl, wrapped);
+        if (_inConversation) WrapInto("> " + _convoInput + "_", cpl, wrapped); // live keyword prompt
         int start = System.Math.Max(0, wrapped.Count - maxLines);
         iy = y + inpad;
         for (int i = start; i < wrapped.Count; i++)
