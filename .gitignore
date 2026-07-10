@@ -1,0 +1,17 @@
+# --- Copyrighted Ultima V game data — NEVER commit ---
+# You must own Ultima V; the build scripts copy your own copy in here.
+u5data/
+
+# --- The MIT logic library is cloned at build time (bradhannah/Ultima5Redux) ---
+# so it isn't re-hosted here. Delete this line if you'd rather vendor it.
+u5redux/
+
+# --- Build output ---
+**/bin/
+**/obj/
+ios/build/
+
+# --- Misc ---
+*.csproj.old
+dims.txt
+.DS_Store
