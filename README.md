@@ -100,8 +100,17 @@ auto-refresh the 7-day certificate in the background, no Mac needed after setup.
 
 ## 🎮 Playing
 
-Ultima V is keyboard-driven. dospad gives you an **on-screen keyboard** and gamepad
-overlay — tap the keyboard toggle to type commands. Hold the phone in **landscape**.
+The app runs in **landscape** and gives you a purpose-built Ultima control layout (no
+fiddly DOS keyboard or toolbar):
+
+- a **movement D-pad** on the left,
+- the frequent **U5 commands** as labelled buttons — Attack, Talk, Open, Get, Jimmy,
+  Look, Cast, Klimb, Enter, Board, Use, Ztats,
+- a utility row: **⌨** (full keyboard), **Esc**, **↵**, **Pass**, **Yes**, **No**.
+
+The game screen sits above the controls (nothing is covered), and there's **sound**. When
+you need to type — NPC conversation keywords, quantities, your character's name — tap **⌨**
+for a full QWERTY, and **⌨▸CMDS** flips back to the command pad.
 
 ## ☕ Support this port
 
