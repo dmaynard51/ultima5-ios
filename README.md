@@ -1,18 +1,42 @@
 # Ultima V on iOS
 
-**Play Ultima V: Warriors of Destiny natively on your iPhone or iPad, with touch
-controls** — a from-scratch [MonoGame](https://monogame.net) front-end built on the
-MIT [Ultima5Redux](https://github.com/bradhannah/Ultima5Redux) logic library.
+**Play Ultima V: Warriors of Destiny on your iPhone or iPad.** Two ways to do it:
 
-It recreates the authentic Ultima V screen: a bordered map window with the Avatar
-dead-centre, a console panel (party / stats / command scroll), on-screen D-pad and a
-QWERTY keyboard for commands.
+| | What it is | Completeness | Feel |
+|---|---|---|---|
+| 🟢 **DOSBox** (recommended) | The **real DOS game** in DOSBox | **100% — the whole game** | On-screen keyboard |
+| 🔵 **Native front-end** | A [MonoGame](https://monogame.net) UI on the MIT [Ultima5Redux](https://github.com/bradhannah/Ultima5Redux) engine | Partial (movement, towns, talk, combat, save…) | Custom touch UI |
 
-> **You must own Ultima V.** Unlike Ultima IV, U5 is *not* free, so **no game data
-> is included in this repo** — the build copies your own copy in. The MIT logic
-> library is cloned from source at build time, not re-hosted here.
+> **You must own Ultima V.** It isn't free, so **no game data is included in this
+> repo** — the build scripts copy your own copy in. The DOSBox app (litchie/dospad,
+> GPLv2) and the MIT logic library are both cloned + patched at build time, not
+> re-hosted here.
 
-## 🚀 Install
+## 🟢 DOSBox — the complete game (recommended)
+
+The fastest path to a **fully playable Ultima V** (combat, magic, shops, dungeons —
+everything, because it *is* the real game). One command builds a one-tap app that
+boots straight into your U5:
+
+```sh
+git clone https://github.com/dmaynard51/ultima5-ios.git
+cd ultima5-ios
+dosbox/build-ios-dosbox.sh ABCDE12345          # your 10-char Apple Team ID
+```
+
+It clones the iOS DOSBox, patches it to auto-run U5, builds/signs, installs, and
+copies your Ultima V data onto the device. First run: trust the developer once under
+**Settings ▸ General ▸ VPN & Device Management**, then reopen — it boots into the game.
+Point it at your data folder with a 2nd argument if it isn't at the default GOG path.
+
+## 🔵 Native front-end (work in progress)
+
+A from-scratch touch UI on the MIT logic library — the authentic U5 screen (bordered
+map window, party/stats console, on-screen D-pad + QWERTY keyboard). Movement, towns,
+castles, ladders, NPC conversations, combat, and save/load work; magic, shops, and
+dungeons don't yet.
+
+### Install
 
 Requires a **Mac** with **Xcode 15.4** and **git**. The scripts install the .NET 8
 SDK for you (into `~/.dotnet`); you may need to add the iOS 17 workload once (see
@@ -78,7 +102,9 @@ thanks, a coffee is hugely appreciated (and completely optional):
 
 ## 🙏 Credits & license
 
-- Game logic + data parsing: **[Ultima5Redux](https://github.com/bradhannah/Ultima5Redux)**
+- DOSBox app: **[dospad](https://github.com/litchie/dospad)** by litchie (GPLv2) —
+  the iOS DOSBox behind the recommended route; cloned + patched at build time.
+- Game logic + data parsing (native route): **[Ultima5Redux](https://github.com/bradhannah/Ultima5Redux)**
   by Brad Hannah (MIT) — cloned at build time.
 - Font: **[font8x8](https://github.com/dhepper/font8x8)** (public domain / CC0).
 - This front-end (the `U5Desktop` / `U5iOS` code and build scripts): MIT — see
