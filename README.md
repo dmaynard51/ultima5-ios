@@ -98,19 +98,36 @@ app. Do the signing once in the **Xcode GUI** and it's completely free:
 **[SideStore](https://sidestore.io)** — they sign with your free Apple ID and
 auto-refresh the 7-day certificate in the background, no Mac needed after setup.
 
-## 💻 No Mac? (sideload the prebuilt app)
+## 💻 No Mac? Install the prebuilt IPA
 
-No Mac or Xcode? Download the prebuilt **[Ultima V IPA](https://github.com/dmaynard51/ultima5-ios/releases/latest)** and sideload it from a
-**Windows or Linux PC** — no Mac needed:
+No Mac or Xcode needed — download the prebuilt app and sideload it from **Windows, Linux,
+or Mac** with a **free Apple ID**.
 
-- **[Sideloadly](https://sideloadly.io)** or **[AltStore](https://altstore.io)** install the
-  `.ipa` with a **free Apple ID** (AltStore auto-refreshes the 7-day signature over Wi-Fi).
-- **No computer at all:** **TrollStore** installs it permanently *if* your iOS supports it;
-  in the EU, **AltStore PAL**.
+**1. Get the app.** Download **[Ultima V.ipa](https://github.com/dmaynard51/ultima5-ios/releases/latest)** from Releases.
 
-The IPA has **no game data**. After installing, open the **Files** app → **On My iPhone →
-Ultima V** and copy your own Ultima V DOS game files into that folder's root, then reopen the
-app — it boots straight into the game.
+**2. Install it** (pick one):
+- **[Sideloadly](https://sideloadly.io)** (Win/Mac/Linux) — plug in the phone, drag in the
+  `.ipa`, enter your **free Apple ID**, click **Start**. Then trust the cert on the phone
+  under **Settings ▸ General ▸ VPN & Device Management** and open the app.
+- **[AltStore](https://altstore.io)** — same idea, and it auto-refreshes the 7-day signature
+  over Wi-Fi so you don't have to re-sign weekly.
+- **TrollStore** (no computer, *if* your iOS supports it) — just open the `.ipa` in the Files
+  app and it installs permanently. In the EU, **AltStore PAL** also needs no computer.
+
+**3. Add your own game files** (the app ships with **none**). You need your legally-owned
+Ultima V DOS files — the folder that contains **`ULTIMA.EXE`** (e.g. from your GOG copy). Copy them
+onto the phone by either:
+- **Files app → On My iPhone → Ultima V** → paste your game files in, **or**
+- **iTunes / Finder → phone → File Sharing → Ultima V** → drag the files into its Documents box.
+
+> ⚠️ **Put the files LOOSE at the root — not inside a folder.** That Ultima V folder *is* the
+> game's `C:\` drive, and the app auto-runs `ULTIMA.EXE` from `C:\`. If you drag a *folder* in
+> (so the files land in `C:\YourFolder\`), the app opens to a bare **`C:\>`** prompt instead
+> of the game. Fix: in the **Files** app, open that subfolder → **•••  ▸ Select ▸ Select All**
+> → **Move** → up one level into the **Ultima V** folder.
+
+**4. Open Ultima V** — it boots straight into the game (landscape, D-pad + command keyboard, sound).
+
 
 ## 🎮 Playing
 
