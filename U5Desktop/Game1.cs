@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.IO;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Audio;
@@ -7,6 +8,7 @@ using Microsoft.Xna.Framework.Input;
 using Microsoft.Xna.Framework.Input.Touch;
 using Ultima5Redux;
 using Ultima5Redux.Maps;
+using Ultima5Redux.MapUnits;
 using Ultima5Redux.MapUnits.TurnResults;
 using Ultima5Redux.MapUnits.TurnResults.SpecificTurnResults;
 using Ultima5Redux.References;
@@ -54,6 +56,8 @@ public class Game1 : Game
     private char _pendingCmd;                              // directional command awaiting a direction
     private bool _onLargeMap = true;                       // false while inside a town/castle/dungeon
     private Point2D _returnLargePos;                       // overworld tile to drop back onto when exiting
+    private bool _titleShown = true;                       // start on the title screen
+    private double _titleBlink;                            // pulse timer for "Tap to Begin"
 
     // Standard EGA 16-colour palette.
     private static readonly Color[] Ega =
@@ -273,6 +277,10 @@ public class Game1 : Game
                 Console.WriteLine();
             }
         }
+        // For headless gameplay screenshots, skip the title unless U5_TITLE is set.
+        if (Environment.GetEnvironmentVariable("U5_SCREENSHOT") != null &&
+            Environment.GetEnvironmentVariable("U5_TITLE") == null)
+            _titleShown = false;
         Console.Out.Flush();
     }
 
@@ -281,6 +289,20 @@ public class Game1 : Game
     protected override void Update(GameTime gameTime)
     {
         var kb = Keyboard.GetState();
+
+        // Title screen: any tap / key / click begins the game.
+        if (_titleShown)
+        {
+            _titleBlink += gameTime.ElapsedGameTime.TotalSeconds;
+            bool go = kb.GetPressedKeyCount() > 0
+                      || Mouse.GetState().LeftButton == ButtonState.Pressed;
+            foreach (var t in TouchPanel.GetState())
+                if (t.State == TouchLocationState.Pressed) go = true;
+            if (go && _titleBlink > 0.4) _titleShown = false; // small delay avoids an instant skip
+            _prevKb = kb;
+            base.Update(gameTime);
+            return;
+        }
 #if !IOS
         if (kb.IsKeyDown(Keys.Escape)) Exit();
 #endif
@@ -585,6 +607,26 @@ public class Game1 : Game
                             _spriteBatch.Draw(_tiles[tr.Index], rect, Color.White);
                     }
 
+                // NPCs, monsters, and other map units — sprites drawn over the terrain
+                // (their transparent pixels let the ground show through).
+                int camX = pos.X - halfX, camY = pos.Y - halfY;
+                Avatar avatarUnit = _map.CurrentMapUnits.TheAvatar;
+                foreach (MapUnit u in _map.CurrentMapUnits.AllActiveMapUnits)
+                {
+                    if (ReferenceEquals(u, avatarUnit)) continue;      // avatar drawn centred below
+                    var mp = u.MapUnitPosition;
+                    if (mp.Floor != _map.CurrentPosition.Floor) continue;
+                    int ux, uy;
+                    if (_onLargeMap) { ux = ((mp.X - camX) % nx + nx) % nx; uy = ((mp.Y - camY) % ny + ny) % ny; }
+                    else { ux = mp.X - camX; uy = mp.Y - camY; }
+                    if (ux < 0 || ux >= _viewX || uy < 0 || uy >= _viewY) continue;
+                    int uidx = u.KeyTileReference?.Index ?? -1;
+                    if (uidx < 0 || uidx >= _tiles.Length) continue;
+                    _spriteBatch.Draw(_tiles[uidx],
+                        new Rectangle(_mapX + ux * TILE * _scale, _mapY + uy * TILE * _scale,
+                                      TILE * _scale, TILE * _scale), Color.White);
+                }
+
                 if (AVATAR_TILE < _tiles.Length)
                     _spriteBatch.Draw(_tiles[AVATAR_TILE],
                         new Rectangle(_mapX + halfX * TILE * _scale, _mapY + halfY * TILE * _scale,
@@ -600,14 +642,53 @@ public class Game1 : Game
         GraphicsDevice.SetRenderTarget(null);
     }
 
-    // Blit the canvas into the free screen space and draw the bezel controls.
+    // Blit the canvas into the free screen space and draw the bezel controls
+    // (or the title screen before the game begins).
     private void Compose()
     {
         GraphicsDevice.Clear(Color.Black);
         _spriteBatch.Begin(samplerState: SamplerState.PointClamp);
-        _spriteBatch.Draw(_canvas, _gameDest, Color.White);
-        DrawControls();
+        if (_titleShown) DrawTitle();
+        else
+        {
+            _spriteBatch.Draw(_canvas, _gameDest, Color.White);
+            DrawControls();
+        }
         _spriteBatch.End();
+    }
+
+    private void DrawCentered(string s, int y, int scale, Color c, int w)
+        => _font.Draw(_spriteBatch, s, w / 2 - s.Length * Font.Glyph * scale / 2, y, scale, c);
+
+    private void DrawTitle()
+    {
+        int w = GraphicsDevice.Viewport.Width, h = GraphicsDevice.Viewport.Height;
+        var gold = new Color(214, 176, 74);
+        _spriteBatch.Draw(_pixel, new Rectangle(0, 0, w, h), new Color(16, 20, 54)); // night sky
+
+        // starfield (deterministic)
+        int sd = System.Math.Max(1, h / 380);
+        for (int i = 0; i < 70; i++)
+        {
+            int sx = (i * 97 + 41) % w, sy = (i * 173 + 23) % h;
+            _spriteBatch.Draw(_pixel, new Rectangle(sx, sy, sd * (1 + i % 2), sd * (1 + i % 2)),
+                              i % 3 == 0 ? gold : Color.White);
+        }
+
+        // gold double frame
+        int m = System.Math.Max(12, h / 22), t = System.Math.Max(3, h / 240);
+        Frame(m, m, w - 2 * m, h - 2 * m, t, gold);
+        Frame(m + 3 * t, m + 3 * t, w - 2 * (m + 3 * t), h - 2 * (m + 3 * t), t, new Color(120, 92, 30));
+
+        // titles
+        int big = System.Math.Max(4, h / 52), sub = System.Math.Max(2, h / 150);
+        DrawCentered("ULTIMA V", h * 30 / 100, big, gold, w);
+        DrawCentered("Warriors of Destiny", h * 30 / 100 + Font.Glyph * big + h / 40, sub, Color.White, w);
+
+        // pulsing prompt
+        double a = 0.45 + 0.55 * System.Math.Sin(_titleBlink * 3.0);
+        var pc = new Color((int)(255 * a), (int)(255 * a), (int)(170 * a));
+        DrawCentered("Tap to Begin", h * 74 / 100, sub, pc, w);
     }
 
     // Double-line frame around the map window, echoing the original's ornate border.
