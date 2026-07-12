@@ -283,6 +283,26 @@ PY
 fi
 plutil -replace UISupportedInterfaceOrientations -json '["UIInterfaceOrientationLandscapeLeft","UIInterfaceOrientationLandscapeRight"]' "$DOSPAD/Resources/iDOS-Info.plist" 2>/dev/null || true
 
+# 3z. Audio: mix with other apps + recover after interruptions, so game sound doesn't die
+#      when another app plays audio (notification, call, music, YouTube, etc.).
+AD="$DOSPAD/dospad/Main/DPAppDelegate.m"
+if [ -f "$AD" ] && ! grep -q "dpAudioInterruption" "$AD"; then
+  echo "Patching audio session (mix-with-others + interruption recovery) ..."
+  python3 - "$AD" <<'PYEOF'
+import sys
+p=sys.argv[1]; s=open(p).read()
+s=s.replace("setCategory: AVAudioSessionCategoryPlayback\n\t\terror: &setCategoryErr];",
+            "setCategory: AVAudioSessionCategoryPlayback\n\t\twithOptions: AVAudioSessionCategoryOptionMixWithOthers\n\t\terror: &setCategoryErr];")
+s=s.replace("    [[DPSettings shared] loadDefaults];\n    dospad_resume();",
+            "    [[DPSettings shared] loadDefaults];\n    dospad_resume();\n    [[AVAudioSession sharedInstance] setActive:YES error:nil];")
+anchor="\t[[AVAudioSession sharedInstance]\n\t\tsetActive: YES\n\t\terror: &activationErr];"
+s=s.replace(anchor, anchor+"\n\t[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(dpAudioInterruption:) name:AVAudioSessionInterruptionNotification object:nil];")
+handler="\n- (void)dpAudioInterruption:(NSNotification *)note {\n    if ([note.userInfo[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue] == AVAudioSessionInterruptionTypeEnded) {\n        [[AVAudioSession sharedInstance] setActive:YES error:nil];\n    }\n}\n\n@end\n"
+i=s.rfind("@end"); s=s[:i]+handler.lstrip()+s[i+len("@end"):]
+open(p,"w").write(s); print("  audio fix applied")
+PYEOF
+fi
+
 # 4. Build + sign.
 echo "Building (this takes a few minutes the first time) ..."
 xattr -cr "$DOSPAD" 2>/dev/null || true
