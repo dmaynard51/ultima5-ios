@@ -143,6 +143,28 @@ The game screen sits above the controls (nothing is covered), and there's **soun
 you need to type — NPC conversation keywords, quantities, your character's name — tap **⌨**
 for a full QWERTY, and **⌨▸CMDS** flips back to the command pad.
 
+## 🤖 Play on Android
+
+There's no custom Android app, but Ultima V runs well on Android through an existing DOSBox
+front-end plus **your own** game files. Two good options:
+
+### RetroArch + DOSBox-Pure (free)
+1. Install **[RetroArch](https://www.retroarch.com)** (Play Store, F-Droid, or the site).
+2. In RetroArch: **Online Updater → Core Downloader → "DOSBox-Pure"**.
+3. Put your Ultima V game folder on the phone — the one with **`ULTIMA.EXE`** — or zip that folder.
+4. **Load Content** → pick the folder (or the `.zip`) → run it with **DOSBox-Pure**. It
+   mounts your files as `C:` and shows a start menu — choose **`ULTIMA.EXE`**.
+5. DOSBox-Pure gives you an on-screen keyboard, a gamepad overlay, and mouse emulation.
+   Hold the phone in **landscape**.
+
+### Magic DOSBox (paid, ~$4 — best touch controls)
+1. Install **Magic DOSBox** from the Play Store.
+2. New game → set the **`C:`** mount to your Ultima V folder and the run command to **`ULTIMA.EXE`**.
+3. It has fully customizable on-screen controls, so you can build a D-pad + command-button
+   layout much like the iOS version here.
+
+> **Bring your own game files** (no game data is distributed here).
+
 ## ☕ Support this port
 
 Getting Ultima V running one-tap on your phone — the DOSBox patching, the ankh icon,
